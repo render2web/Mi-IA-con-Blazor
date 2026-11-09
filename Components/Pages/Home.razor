@@ -1,0 +1,107 @@
+﻿@page "/"
+@rendermode InteractiveServer
+@using Microsoft.Extensions.AI
+@inject IChatClient ChatClient
+
+<PageTitle>Mi IA Local</PageTitle>
+
+<div class="chat-container">
+
+    <header class="chat-header">
+        <h1>Mi IA Local</h1>
+        <p>Desarrollada con C#, Blazor y Ollama</p>
+    </header>
+
+    <section class="chat-messages">
+
+        @foreach (var mensaje in historial)
+        {
+            if (mensaje.Role != ChatRole.System)
+            {
+                <div class="mensaje @(mensaje.Role == ChatRole.User ? "usuario" : "ia")">
+                    <strong>
+                        @(mensaje.Role == ChatRole.User ? "Tú" : "IA")
+                    </strong>
+                    <p>@mensaje.Text</p>
+                </div>
+            }
+        }
+
+        @if (procesando)
+        {
+            <p class="estado">La IA está respondiendo...</p>
+        }
+
+        @if (!string.IsNullOrEmpty(error))
+        {
+            <p class="error">@error</p>
+        }
+
+    </section>
+
+    <form class="chat-form"
+          @onsubmit="EnviarMensaje"
+          @onsubmit:preventDefault="true">
+
+        <input @bind="pregunta"
+               @bind:event="oninput"
+               placeholder="Escribe tu pregunta..."
+               disabled="@procesando" />
+
+        <button type="submit" disabled="@procesando">
+            Enviar
+        </button>
+
+    </form>
+
+</div>
+
+@code {
+    private string pregunta = "";
+    private string? error;
+    private bool procesando = false;
+
+    // Historial independiente de esta conversación
+    private readonly List<ChatMessage> historial =
+    [
+        new(ChatRole.System,
+            "Eres un asistente útil. Responde en español.")
+    ];
+
+    private async Task EnviarMensaje()
+    {
+        if (procesando || string.IsNullOrWhiteSpace(pregunta))
+            return;
+
+        string texto = pregunta.Trim();
+        pregunta = "";
+        error = null;
+        procesando = true;
+
+        // Agregamos la pregunta al historial
+        historial.Add(new ChatMessage(ChatRole.User, texto));
+
+        try
+        {
+            // Enviamos todo el historial al modelo
+            var respuesta = await                ChatClient.GetResponseAsync(historial);
+
+            // Guardamos la respuesta para mantener el contexto
+            historial.Add(
+                new ChatMessage(ChatRole.Assistant, respuesta.Text)
+            );
+        }
+        catch (Exception)
+        {
+            error = "No se pudo consultar la IA. Verifica Ollama.";
+
+            // Retiramos la pregunta que no pudo procesarse
+            historial.RemoveAt(historial.Count - 1);
+            pregunta = texto;
+        }
+        finally
+        {
+            procesando = false;
+        }
+    }
+}
